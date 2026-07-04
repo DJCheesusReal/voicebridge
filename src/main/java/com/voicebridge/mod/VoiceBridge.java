@@ -29,7 +29,7 @@ import static net.minecraft.server.command.CommandManager.literal;
 public class VoiceBridge implements DedicatedServerModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("voicebridge");
     private static final int WS_PORT = 8080;
-    private static final String WEB_URL = "https://yourdomain.com/?token=";
+    private static final String WEB_URL = "https://vc.djcheesus.com/?token=";
 
     private BridgeWebSocketServer wsServer;
     private final ConcurrentMap<String, UUID> tokenRegistry = new ConcurrentHashMap<>();
