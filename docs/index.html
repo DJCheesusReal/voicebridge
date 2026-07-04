@@ -14,7 +14,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 h1 { font-size: 24px; margin-bottom: 4px; }
 h2 { font-size: 16px; font-weight: 400; color: #8b949e; margin-bottom: 24px; }
 label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #8b949e; }
-input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 16px; outline: none; transition: border-color .2s; }
+input[type="text"] { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 16px; outline: none; transition: border-color .2s; }
 input:focus { border-color: #58a6ff; }
 input.token-input { font-size: 32px; letter-spacing: 12px; text-align: center; font-weight: 700; }
 button { width: 100%; padding: 10px 16px; background: #238636; border: 1px solid #2ea043; border-radius: 6px; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .2s; margin-top: 16px; }
@@ -35,7 +35,7 @@ button.danger:hover { background: #f85149; }
 .badge.green { background: #238636; }
 .badge.red { background: #da3633; }
 
-#ptt-btn { display: block; width: 100%; padding: 18px; border: none; border-radius: 8px; font-size: 18px; font-weight: 700; cursor: pointer; transition: all .1s; margin: 8px 0 12px 0; }
+#ptt-btn { display: block; width: 100%; padding: 18px; border: none; border-radius: 8px; font-size: 18px; font-weight: 700; cursor: pointer; transition: all .1s; margin: 8px 0 4px 0; }
 #ptt-btn.idle { background: #21262d; color: #8b949e; border: 2px solid #30363d; }
 #ptt-btn.idle:hover { background: #30363d; }
 #ptt-btn.active { background: #238636; color: #fff; border: 2px solid #2ea043; }
@@ -43,8 +43,27 @@ button.danger:hover { background: #f85149; }
 #ptt-hint { font-size: 12px; color: #484f58; text-align: center; margin-bottom: 8px; }
 
 #volume-meter { height: 4px; background: #21262d; border-radius: 2px; margin-bottom: 12px; overflow: hidden; }
-#volume-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #238636, #2ea043); transition: width .05s; border-radius: 2px; }
-#volume-fill.active { background: linear-gradient(90deg, #da3633, #f85149); }
+#volume-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #238636, #2ea043); border-radius: 2px; }
+#volume-fill.talking { background: linear-gradient(90deg, #da3633, #f85149); }
+
+/* Mode toggle */
+#mode-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.mode-btn { flex: 1; padding: 8px; border: 2px solid #30363d; border-radius: 6px; background: #0d1117; color: #8b949e; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: all .15s; margin: 0; }
+.mode-btn:hover { border-color: #58a6ff; color: #c9d1d9; }
+.mode-btn.active { border-color: #58a6ff; color: #58a6ff; background: #0d1117; }
+
+/* Sensitivity slider */
+#vox-controls { margin-bottom: 8px; padding: 10px 12px; background: #0d1117; border-radius: 6px; border: 1px solid #21262d; }
+#vox-controls label { font-size: 12px; color: #8b949e; margin: 0; }
+#vox-controls .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+#vox-controls input[type="range"] { flex: 1; accent-color: #58a6ff; height: 4px; background: #30363d; border-radius: 2px; -webkit-appearance: none; appearance: none; }
+#vox-controls input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #58a6ff; cursor: pointer; }
+#vox-threshold-label { font-size: 11px; font-family: monospace; color: #8b949e; min-width: 32px; text-align: right; }
+
+#vox-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #30363d; margin-right: 6px; vertical-align: middle; }
+#vox-indicator.silence { background: #30363d; }
+#vox-indicator.ambient { background: #d29922; }
+#vox-indicator.speaking { background: #3fb950; }
 
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; padding: 8px; border-bottom: 1px solid #30363d; }
@@ -54,7 +73,6 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
 .uuid-col { color: #8b949e; font-size: 12px; }
 .pos-col { color: #58a6ff; }
 .coord { color: #c9d1d9; }
-.speaking-indicator { color: #3fb950; font-size: 12px; }
 
 #mic-permit { margin: 12px 0 0; padding: 14px; background: #1f2937; border: 1px dashed #30363d; border-radius: 8px; text-align: center; cursor: pointer; transition: background .2s; }
 #mic-permit:hover { background: #283541; }
@@ -88,11 +106,25 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
     <div id="status-bar" class="status success">Connected</div>
 
     <div id="mic-permit">
-      <h3>🎤 Enable Microphone</h3>
+      <h3>Enable Microphone</h3>
       <p>Click to allow mic access for voice chat</p>
     </div>
 
     <div id="audio-controls" class="hidden">
+      <div id="mode-row">
+        <button id="mode-ptt" class="mode-btn active">PTT</button>
+        <button id="mode-vox" class="mode-btn">VOX</button>
+      </div>
+
+      <div id="vox-controls" class="hidden">
+        <div class="slider-row">
+          <span id="vox-indicator" class="silence"></span>
+          <label for="vox-threshold">Sensitivity</label>
+          <input type="range" id="vox-threshold" min="0" max="100" value="25">
+          <span id="vox-threshold-label">25</span>
+        </div>
+      </div>
+
       <div id="volume-meter"><div id="volume-fill"></div></div>
       <div id="ptt-hint">Press and hold <strong>Space</strong> or click to talk</div>
       <button id="ptt-btn" class="idle">Hold to Talk</button>
@@ -131,6 +163,12 @@ const pttHint = document.getElementById('ptt-hint');
 const volumeFill = document.getElementById('volume-fill');
 const audioControls = document.getElementById('audio-controls');
 const micPermit = document.getElementById('mic-permit');
+const modePtt = document.getElementById('mode-ptt');
+const modeVox = document.getElementById('mode-vox');
+const voxControls = document.getElementById('vox-controls');
+const voxThreshold = document.getElementById('vox-threshold');
+const voxThresholdLabel = document.getElementById('vox-threshold-label');
+const voxIndicator = document.getElementById('vox-indicator');
 
 let ws = null;
 let connected = false;
@@ -141,19 +179,24 @@ let audioCtx = null;
 let micStream = null;
 let scriptNode = null;
 let micEnabled = false;
-let pttActive = false;
+
+// Input mode: 'ptt' or 'vox'
+let inputMode = 'ptt';
+let pttActive = false;        // PTT: user is holding the button
+let voxActive = false;        // VOX: currently transmitting because of voice
 
 const SAMPLE_RATE = 48000;
-const CHUNK_DURATION_MS = 40;
-const CHUNK_SAMPLES = Math.floor(SAMPLE_RATE * CHUNK_DURATION_MS / 1000); // 1920
 
-// Playback ring buffer
+// VOX state
+const VOX_HOLD_MS = 600;      // keep transmitting this long after speech stops
+let voxSilentStart = 0;       // timestamp when last silence began
+
+// Playback
 let playQueue = [];
 let isPlaying = false;
 let playSource = null;
 let playGain = null;
 
-// Speaking set: UUIDs of players currently speaking
 let speakingPlayers = new Set();
 
 if (urlToken) {
@@ -210,30 +253,67 @@ async function enableMic() {
     scriptNode.connect(audioCtx.destination);
 
     scriptNode.onaudioprocess = (event) => {
-      if (!pttActive || ws == null || ws.readyState !== WebSocket.OPEN) return;
-
       const input = event.inputBuffer.getChannelData(0);
-      // Convert float32 [-1,1] to int16 PCM
       const pcm = new Int16Array(input.length);
+      let rms = 0;
       let peak = 0;
+
       for (let i = 0; i < input.length; i++) {
         const s = Math.max(-1, Math.min(1, input[i]));
         pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        rms += s * s;
         const abs = Math.abs(s);
         if (abs > peak) peak = abs;
       }
+      rms = Math.sqrt(rms / input.length);
 
       // Update volume meter
       volumeFill.style.width = (peak * 100) + '%';
 
-      // Send PCM chunk as binary
+      // Decide whether to transmit
+      let shouldTransmit = false;
+
+      if (inputMode === 'ptt') {
+        shouldTransmit = pttActive;
+      } else {
+        // VOX mode
+        const threshold = parseInt(voxThreshold.value) / 100;
+        if (rms > threshold * 0.5) {
+          voxActive = true;
+          voxSilentStart = 0;
+          shouldTransmit = true;
+          voxIndicator.className = 'speaking';
+          volumeFill.className = 'talking';
+        } else if (voxActive) {
+          if (voxSilentStart === 0) {
+            voxSilentStart = performance.now();
+          }
+          if (performance.now() - voxSilentStart < VOX_HOLD_MS) {
+            shouldTransmit = true;
+            voxIndicator.className = 'ambient';
+          } else {
+            voxActive = false;
+            shouldTransmit = false;
+            voxIndicator.className = 'silence';
+            volumeFill.className = '';
+          }
+        } else {
+          voxIndicator.className = 'silence';
+          volumeFill.className = '';
+        }
+      }
+
+      if (!shouldTransmit || !ws || ws.readyState !== WebSocket.OPEN) return;
+
       ws.send(pcm.buffer);
     };
 
     micEnabled = true;
     micPermit.classList.add('hidden');
     audioControls.classList.remove('hidden');
-    statusBar.textContent = 'Mic enabled — push Space to talk';
+    voxThresholdLabel.textContent = voxThreshold.value;
+    updateModeUI();
+    statusBar.textContent = 'Mic enabled';
     statusBar.className = 'status success';
   } catch (err) {
     setStatus(authStatus, 'Mic access denied: ' + err.message, 'error');
@@ -242,6 +322,7 @@ async function enableMic() {
 
 function disableMic() {
   pttActive = false;
+  voxActive = false;
   if (scriptNode) {
     scriptNode.disconnect();
     scriptNode = null;
@@ -256,6 +337,8 @@ function disableMic() {
   pttBtn.className = 'idle';
   pttBtn.textContent = 'Hold to Talk';
   volumeFill.style.width = '0%';
+  volumeFill.className = '';
+  voxIndicator.className = 'silence';
 }
 
 // ========== Playback ==========
@@ -294,12 +377,62 @@ function processPlayQueue() {
   playSource.start();
 }
 
+// ========== Input Mode ==========
+function setInputMode(mode) {
+  inputMode = mode;
+  voxActive = false;
+  voxSilentStart = 0;
+  updateModeUI();
+}
+
+function updateModeUI() {
+  if (inputMode === 'ptt') {
+    modePtt.classList.add('active');
+    modeVox.classList.remove('active');
+    voxControls.classList.add('hidden');
+    pttBtn.classList.remove('hidden');
+    pttHint.classList.remove('hidden');
+    pttHint.innerHTML = 'Press and hold <strong>Space</strong> or click to talk';
+    pttBtn.textContent = 'Hold to Talk';
+    pttBtn.className = 'idle';
+  } else {
+    modePtt.classList.remove('active');
+    modeVox.classList.add('active');
+    voxControls.classList.remove('hidden');
+    pttBtn.classList.add('hidden');
+    pttHint.classList.remove('hidden');
+    pttHint.innerHTML = 'Speak to activate &mdash; <strong>Space</strong> to mute';
+    pttBtn.className = 'idle';
+  }
+}
+
+modePtt.addEventListener('click', () => setInputMode('ptt'));
+modeVox.addEventListener('click', () => setInputMode('vox'));
+
+voxThreshold.addEventListener('input', () => {
+  voxThresholdLabel.textContent = voxThreshold.value;
+});
+
 // ========== PTT Controls ==========
 function startTalking() {
   if (!micEnabled || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if (inputMode === 'vox') {
+    // In VOX mode, Space toggles mute
+    pttActive = !pttActive;
+    if (pttActive) {
+      pttBtn.className = 'speaking';
+      pttBtn.textContent = 'Muted';
+      pttHint.innerHTML = 'Microphone muted &mdash; press <strong>Space</strong> to unmute';
+    } else {
+      pttBtn.className = 'idle';
+      pttBtn.textContent = 'Hold to Talk';
+      pttHint.innerHTML = 'Speak to activate &mdash; <strong>Space</strong> to mute';
+    }
+    return;
+  }
   pttActive = true;
   pttBtn.className = 'active';
-  pttBtn.textContent = '🔴 Talking...';
+  pttBtn.textContent = 'Talking...';
   pttHint.textContent = 'Release to mute';
   if (audioCtx && audioCtx.state === 'suspended') {
     audioCtx.resume();
@@ -307,6 +440,7 @@ function startTalking() {
 }
 
 function stopTalking() {
+  if (inputMode === 'vox') return; // handled by toggle in startTalking
   if (!pttActive) return;
   pttActive = false;
   pttBtn.className = 'idle';
@@ -315,7 +449,7 @@ function stopTalking() {
   volumeFill.style.width = '0%';
 }
 
-// Mouse PTT
+// Mouse PTT (PTT mode only)
 pttBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startTalking(); });
 pttBtn.addEventListener('mouseup', (e) => { e.preventDefault(); stopTalking(); });
 pttBtn.addEventListener('mouseleave', () => stopTalking());
@@ -324,7 +458,7 @@ pttBtn.addEventListener('mouseleave', () => stopTalking());
 pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
 pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
 
-// Keyboard PTT
+// Keyboard
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.repeat && connected) {
     e.preventDefault();
@@ -379,7 +513,7 @@ function connect() {
           playerUuid = msg.uuid;
           setStatus(authStatus, 'Authenticated!', 'success');
           showApp();
-          setStatus(statusBar, 'Connected — press Space to talk', 'success');
+          setStatus(statusBar, 'Connected', 'success');
           break;
         case 'positions':
           updatePlayerTable(msg);
@@ -436,6 +570,8 @@ function disconnect() {
   speakingPlayers.clear();
   playQueue = [];
   isPlaying = false;
+  voxActive = false;
+  pttActive = false;
   showAuth();
   setStatus(authStatus, 'Disconnected', '');
   connectBtn.disabled = false;

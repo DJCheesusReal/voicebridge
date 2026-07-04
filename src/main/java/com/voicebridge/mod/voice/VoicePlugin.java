@@ -89,6 +89,9 @@ public class VoicePlugin implements VoicechatPlugin {
         ServerPlayerEntity senderMc = server.getPlayerManager().getPlayer(senderUuid);
         if (senderMc == null) return;
 
+        // Resolve sender group once
+        Group senderGroup = senderConn.getGroup();
+
         for (Map.Entry<UUID, Consumer<ForwardedAudio>> entry : outputForwarders.entrySet()) {
             UUID listenerUuid = entry.getKey();
             if (listenerUuid.equals(senderUuid)) continue;
@@ -97,6 +100,17 @@ public class VoicePlugin implements VoicechatPlugin {
             if (listenerMc == null) continue;
             if (!senderMc.getServerWorld().equals(listenerMc.getServerWorld())) continue;
             if (listenerMc.distanceTo(senderMc) > PROXIMITY_DISTANCE) continue;
+
+            // Group check: only forward if both players share the same group,
+            // or if neither is in a group.
+            VoicechatConnection listenerConn = voicechatApi.getConnectionOf(listenerUuid);
+            if (listenerConn != null) {
+                Group listenerGroup = listenerConn.getGroup();
+                if (senderGroup != null && listenerGroup != null
+                        && !senderGroup.getId().equals(listenerGroup.getId())) {
+                    continue;
+                }
+            }
 
             entry.getValue().accept(new ForwardedAudio(senderUuid, opusData, whispering));
         }
