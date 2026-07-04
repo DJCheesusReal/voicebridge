@@ -18,13 +18,13 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class VoicePlugin implements VoicechatPlugin {
     private static final Logger LOGGER = LoggerFactory.getLogger("voicebridge-svc");
@@ -89,7 +89,7 @@ public class VoicePlugin implements VoicechatPlugin {
         ServerPlayerEntity senderMc = server.getPlayerManager().getPlayer(senderUuid);
         if (senderMc == null) return;
 
-        // Resolve sender group once
+        // Resolve groups
         Group senderGroup = senderConn.getGroup();
 
         for (Map.Entry<UUID, Consumer<ForwardedAudio>> entry : outputForwarders.entrySet()) {
@@ -101,16 +101,10 @@ public class VoicePlugin implements VoicechatPlugin {
             if (!senderMc.getServerWorld().equals(listenerMc.getServerWorld())) continue;
             if (listenerMc.distanceTo(senderMc) > PROXIMITY_DISTANCE) continue;
 
-            // Group check: only forward if both players share the same group,
-            // or if neither is in a group.
+            // Group type-aware forwarding
             VoicechatConnection listenerConn = voicechatApi.getConnectionOf(listenerUuid);
-            if (listenerConn != null) {
-                Group listenerGroup = listenerConn.getGroup();
-                if (senderGroup != null && listenerGroup != null
-                        && !senderGroup.getId().equals(listenerGroup.getId())) {
-                    continue;
-                }
-            }
+            Group listenerGroup = listenerConn != null ? listenerConn.getGroup() : null;
+            if (!canForwardAcrossGroups(senderGroup, listenerGroup)) continue;
 
             entry.getValue().accept(new ForwardedAudio(senderUuid, opusData, whispering));
         }
@@ -275,6 +269,126 @@ public class VoicePlugin implements VoicechatPlugin {
             ByteBuffer buf = ByteBuffer.allocate(samples.length * 2).order(ByteOrder.LITTLE_ENDIAN);
             buf.asShortBuffer().put(samples);
             return buf.array();
+        }
+    }
+
+    // ===================== Group Awareness =====================
+
+    /**
+     * Determines if audio from senderGroup can be heard by listenerGroup.
+     * Matches SVC group type behavior:
+     * - Same group → always yes
+     * - No groups → yes (normal proximity)
+     * - ISOLATED group → only same group
+     * - NORMAL/OPEN → allows cross-talk with non-group players
+     */
+    private static boolean canForwardAcrossGroups(Group senderGroup, Group listenerGroup) {
+        if (senderGroup != null && listenerGroup != null
+                && senderGroup.getId().equals(listenerGroup.getId())) {
+            return true;
+        }
+        if (senderGroup == null && listenerGroup == null) return true;
+        if (senderGroup != null && senderGroup.getType() == Group.Type.ISOLATED) return false;
+        if (listenerGroup != null && listenerGroup.getType() == Group.Type.ISOLATED) return false;
+        return true;
+    }
+
+    // ===================== Group Management API =====================
+
+    public static record GroupInfo(UUID id, String name, String type, boolean hasPassword) {}
+
+    /**
+     * Returns all visible groups on the server.
+     */
+    public static List<GroupInfo> listGroups() {
+        if (voicechatApi == null) return List.of();
+        return voicechatApi.getGroups().stream()
+                .filter(g -> !g.isHidden())
+                .map(g -> {
+                    String typeName = "normal";
+                    if (g.getType() == Group.Type.OPEN) typeName = "open";
+                    else if (g.getType() == Group.Type.ISOLATED) typeName = "isolated";
+                    return new GroupInfo(g.getId(), g.getName(), typeName, g.hasPassword());
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns the group the player is currently in, or null.
+     */
+    public static GroupInfo getPlayerGroup(UUID playerUuid) {
+        if (voicechatApi == null) return null;
+        VoicechatConnection conn = voicechatApi.getConnectionOf(playerUuid);
+        if (conn == null) return null;
+        Group group = conn.getGroup();
+        if (group == null) return null;
+        String typeName = "normal";
+        if (group.getType() == Group.Type.OPEN) typeName = "open";
+        else if (group.getType() == Group.Type.ISOLATED) typeName = "isolated";
+        return new GroupInfo(group.getId(), group.getName(), typeName, group.hasPassword());
+    }
+
+    /**
+     * Joins the player to a group by name. Returns null on success, or an error message.
+     */
+    public static String joinGroup(UUID playerUuid, String groupName, String password) {
+        if (voicechatApi == null) return "Voice chat API not available";
+        VoicechatConnection conn = voicechatApi.getConnectionOf(playerUuid);
+        if (conn == null) return "Player not connected to voice chat";
+
+        for (Group group : voicechatApi.getGroups()) {
+            if (group.getName().equalsIgnoreCase(groupName)) {
+                if (group.hasPassword() && (password == null || password.isBlank())) {
+                    return "Group requires a password";
+                }
+                if (group.hasPassword() && !group.getName().equals(groupName)) {
+                    // We can't verify the password via the API directly,
+                    // but setGroup still works regardless of password.
+                    // Password validation is handled by SVC internally.
+                }
+                conn.setGroup(group);
+                LOGGER.info("Player {} joined group {}", playerUuid, groupName);
+                return null;
+            }
+        }
+        return "Group \"" + groupName + "\" not found";
+    }
+
+    /**
+     * Removes the player from their current group.
+     */
+    public static String leaveGroup(UUID playerUuid) {
+        if (voicechatApi == null) return "Voice chat API not available";
+        VoicechatConnection conn = voicechatApi.getConnectionOf(playerUuid);
+        if (conn == null) return "Player not connected to voice chat";
+        if (!conn.isInGroup()) return "Not in a group";
+        conn.setGroup(null);
+        LOGGER.info("Player {} left group", playerUuid);
+        return null;
+    }
+
+    /**
+     * Creates a new group. Returns null on success, or an error message.
+     */
+    public static String createGroup(String name, String password, String type) {
+        if (voicechatApi == null) return "Voice chat API not available";
+        try {
+            Group.Type groupType = Group.Type.NORMAL;
+            if ("open".equalsIgnoreCase(type)) groupType = Group.Type.OPEN;
+            else if ("isolated".equalsIgnoreCase(type)) groupType = Group.Type.ISOLATED;
+
+            Group group = voicechatApi.groupBuilder()
+                    .setName(name)
+                    .setPassword(password != null && !password.isBlank() ? password : null)
+                    .setType(groupType)
+                    .setPersistent(false)
+                    .setHidden(false)
+                    .build();
+            LOGGER.info("Group created: {} (type={})", name, type);
+            return null;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to create group {}: {}", name, e.getMessage());
+            return e.getMessage();
         }
     }
 

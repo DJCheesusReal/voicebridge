@@ -140,6 +140,51 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
       </thead>
       <tbody id="players-tbody"></tbody>
     </table>
+
+    <div id="group-section" style="margin-top:12px;padding-top:12px;border-top:1px solid #21262d;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:13px;color:#8b949e;">Group: <strong id="group-name" style="color:#c9d1d9;">none</strong></span>
+        <button id="group-manage-btn" style="width:auto;margin:0;padding:4px 12px;font-size:12px;">Manage</button>
+      </div>
+    </div>
+
+    <!-- Group Modal -->
+    <div id="group-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:100;">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;width:90%;max-width:440px;max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h3 style="font-size:18px;color:#c9d1d9;">Voice Groups</h3>
+          <button id="group-modal-close" style="width:auto;margin:0;padding:4px 10px;font-size:13px;background:transparent;border:1px solid #30363d;color:#8b949e;">Close</button>
+        </div>
+
+        <div id="group-current" style="padding:10px 12px;background:#0d1117;border-radius:6px;margin-bottom:12px;font-size:13px;">
+          Current: <strong id="group-current-name" style="color:#c9d1d9;">none</strong>
+          <span id="group-current-type" style="color:#8b949e;font-size:11px;"></span>
+        </div>
+
+        <div id="group-actions" style="display:flex;gap:6px;margin-bottom:12px;">
+          <button id="group-leave-btn" class="danger" style="flex:1;margin:0;padding:6px;font-size:13px;">Leave Group</button>
+          <button id="group-refresh-btn" style="flex:1;margin:0;padding:6px;font-size:13px;background:#21262d;border-color:#30363d;">Refresh</button>
+        </div>
+
+        <div id="group-list"></div>
+
+        <details style="margin-top:12px;">
+          <summary style="cursor:pointer;color:#58a6ff;font-size:13px;font-weight:600;">Create Group</summary>
+          <div style="margin-top:8px;">
+            <input type="text" id="group-create-name" placeholder="Group name" style="margin-bottom:6px;font-size:14px;">
+            <div style="display:flex;gap:6px;margin-bottom:6px;">
+              <select id="group-create-type" style="flex:1;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:13px;">
+                <option value="normal">Normal</option>
+                <option value="open">Open</option>
+                <option value="isolated">Isolated</option>
+              </select>
+              <input type="text" id="group-create-password" placeholder="Password (optional)" style="flex:1;font-size:13px;">
+            </div>
+            <button id="group-create-btn" style="margin:0;padding:6px;font-size:13px;">Create Group</button>
+          </div>
+        </details>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -521,6 +566,18 @@ function connect() {
         case 'speaking':
           handleSpeaking(msg);
           break;
+        case 'group_my':
+          updateGroupUI(msg);
+          break;
+        case 'group_list':
+          updateGroupList(msg);
+          break;
+        case 'group_join_result':
+        case 'group_leave_result':
+        case 'group_create_result':
+          if (msg.success) { sendMsg('group_list'); sendMsg('group_my'); }
+          else { setStatus(authStatus, msg.error || 'Group operation failed', 'error'); }
+          break;
         case 'pong':
           break;
       }
@@ -559,6 +616,90 @@ function handleSpeaking(msg) {
   }
   speakingCount.textContent = speakingPlayers.size;
 }
+
+// ========== Group Management ==========
+const groupName = document.getElementById('group-name');
+const groupManageBtn = document.getElementById('group-manage-btn');
+const groupModal = document.getElementById('group-modal');
+const groupModalClose = document.getElementById('group-modal-close');
+const groupCurrentName = document.getElementById('group-current-name');
+const groupCurrentType = document.getElementById('group-current-type');
+const groupLeaveBtn = document.getElementById('group-leave-btn');
+const groupRefreshBtn = document.getElementById('group-refresh-btn');
+const groupList = document.getElementById('group-list');
+const groupCreateName = document.getElementById('group-create-name');
+const groupCreateType = document.getElementById('group-create-type');
+const groupCreatePassword = document.getElementById('group-create-password');
+const groupCreateBtn = document.getElementById('group-create-btn');
+
+function sendMsg(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+
+function updateGroupUI(msg) {
+  if (msg.name) {
+    groupName.textContent = msg.name;
+    groupCurrentName.textContent = msg.name;
+    groupCurrentType.textContent = '(' + msg.type + ')';
+    groupLeaveBtn.disabled = false;
+  } else {
+    groupName.textContent = 'none';
+    groupCurrentName.textContent = 'none';
+    groupCurrentType.textContent = '';
+    groupLeaveBtn.disabled = true;
+  }
+}
+
+function updateGroupList(msg) {
+  groupList.innerHTML = '';
+  if (!msg.groups || msg.groups.length === 0) {
+    groupList.innerHTML = '<div style="color:#484f58;font-size:13px;text-align:center;padding:16px;">No groups available</div>';
+    return;
+  }
+  for (const g of msg.groups) {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #21262d;';
+    div.innerHTML = `<div><strong style="color:#c9d1d9;font-size:14px;">${g.name}</strong><span style="color:#8b949e;font-size:11px;margin-left:6px;">${g.type}</span></div>`;
+    const joinBtn = document.createElement('button');
+    joinBtn.textContent = g.hasPassword ? 'Join (pw)' : 'Join';
+    joinBtn.style.cssText = 'width:auto;margin:0;padding:4px 10px;font-size:12px;';
+    joinBtn.addEventListener('click', () => {
+      if (g.hasPassword) {
+        const pw = prompt('Password for group "' + g.name + '":');
+        if (pw === null) return;
+        sendMsg({ type: 'group_join', name: g.name, password: pw });
+      } else {
+        sendMsg({ type: 'group_join', name: g.name });
+      }
+    });
+    div.appendChild(joinBtn);
+    groupList.appendChild(div);
+  }
+}
+
+// Group modal
+groupManageBtn.addEventListener('click', () => {
+  groupModal.classList.remove('hidden');
+  groupModal.style.display = 'flex';
+  sendMsg({ type: 'group_my' });
+  sendMsg({ type: 'group_list' });
+});
+groupModalClose.addEventListener('click', () => {
+  groupModal.classList.add('hidden');
+  groupModal.style.display = 'none';
+});
+groupModal.addEventListener('click', (e) => {
+  if (e.target === groupModal) { groupModal.classList.add('hidden'); groupModal.style.display = 'none'; }
+});
+groupLeaveBtn.addEventListener('click', () => sendMsg({ type: 'group_leave' }));
+groupRefreshBtn.addEventListener('click', () => { sendMsg({ type: 'group_list' }); sendMsg({ type: 'group_my' }); });
+groupCreateBtn.addEventListener('click', () => {
+  const name = groupCreateName.value.trim();
+  if (!name) return;
+  const type = groupCreateType.value;
+  const pw = groupCreatePassword.value.trim() || null;
+  sendMsg({ type: 'group_create', name, type, password: pw });
+  groupCreateName.value = '';
+  groupCreatePassword.value = '';
+});
 
 function disconnect() {
   disableMic();

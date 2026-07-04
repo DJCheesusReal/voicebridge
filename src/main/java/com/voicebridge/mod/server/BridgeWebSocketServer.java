@@ -1,5 +1,6 @@
 package com.voicebridge.mod.server;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.voicebridge.mod.VoiceBridge;
@@ -109,6 +110,9 @@ public class BridgeWebSocketServer extends WebSocketServer {
                 byte[] pcm = VoicePlugin.opusToPcm(forwardedAudio.opusData());
                 conn.send(pcm);
             });
+
+            // Send initial group state
+            handleGroupMy(conn, playerUuid);
         } catch (Exception e) {
             conn.close(4000, "Invalid message format");
         }
@@ -128,6 +132,11 @@ public class BridgeWebSocketServer extends WebSocketServer {
                     pong.addProperty("type", "pong");
                     conn.send(pong.toString());
                 }
+                case "group_list" -> handleGroupList(conn, playerUuid);
+                case "group_my" -> handleGroupMy(conn, playerUuid);
+                case "group_join" -> handleGroupJoin(conn, playerUuid, json);
+                case "group_leave" -> handleGroupLeave(conn, playerUuid);
+                case "group_create" -> handleGroupCreate(conn, json);
                 case "audio_state" -> {
                     boolean whispering = json.get("whispering").getAsBoolean();
                     LOGGER.debug("Audio state update for {}: whispering={}", playerUuid, whispering);
@@ -137,6 +146,89 @@ public class BridgeWebSocketServer extends WebSocketServer {
         } catch (Exception e) {
             LOGGER.warn("Invalid JSON from authenticated client {}: {}", playerUuid, e.getMessage());
         }
+    }
+
+    // ===================== Group Handlers =====================
+
+    private void handleGroupList(WebSocket conn, UUID playerUuid) {
+        java.util.List<VoicePlugin.GroupInfo> groups = VoicePlugin.listGroups();
+        JsonArray arr = new JsonArray();
+        for (VoicePlugin.GroupInfo g : groups) {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("id", g.id().toString());
+            obj.addProperty("name", g.name());
+            obj.addProperty("type", g.type());
+            obj.addProperty("hasPassword", g.hasPassword());
+            arr.add(obj);
+        }
+        JsonObject resp = new JsonObject();
+        resp.addProperty("type", "group_list");
+        resp.add("groups", arr);
+        conn.send(resp.toString());
+    }
+
+    private void handleGroupMy(WebSocket conn, UUID playerUuid) {
+        VoicePlugin.GroupInfo group = VoicePlugin.getPlayerGroup(playerUuid);
+        JsonObject resp = new JsonObject();
+        resp.addProperty("type", "group_my");
+        if (group != null) {
+            resp.addProperty("id", group.id().toString());
+            resp.addProperty("name", group.name());
+            resp.addProperty("type", group.type());
+        }
+        conn.send(resp.toString());
+    }
+
+    private void handleGroupJoin(WebSocket conn, UUID playerUuid, JsonObject json) {
+        String name = json.get("name").getAsString();
+        String password = json.has("password") && !json.get("password").isJsonNull()
+                ? json.get("password").getAsString() : null;
+        String error = VoicePlugin.joinGroup(playerUuid, name, password);
+        JsonObject resp = new JsonObject();
+        resp.addProperty("type", "group_join_result");
+        if (error == null) {
+            resp.addProperty("success", true);
+        } else {
+            resp.addProperty("success", false);
+            resp.addProperty("error", error);
+        }
+        conn.send(resp.toString());
+        if (error == null) {
+            handleGroupMy(conn, playerUuid);
+        }
+    }
+
+    private void handleGroupLeave(WebSocket conn, UUID playerUuid) {
+        String error = VoicePlugin.leaveGroup(playerUuid);
+        JsonObject resp = new JsonObject();
+        resp.addProperty("type", "group_leave_result");
+        if (error == null) {
+            resp.addProperty("success", true);
+        } else {
+            resp.addProperty("success", false);
+            resp.addProperty("error", error);
+        }
+        conn.send(resp.toString());
+        if (error == null) {
+            handleGroupMy(conn, playerUuid);
+        }
+    }
+
+    private void handleGroupCreate(WebSocket conn, JsonObject json) {
+        String name = json.get("name").getAsString();
+        String password = json.has("password") && !json.get("password").isJsonNull()
+                ? json.get("password").getAsString() : null;
+        String type = json.has("type") ? json.get("type").getAsString() : "normal";
+        String error = VoicePlugin.createGroup(name, password, type);
+        JsonObject resp = new JsonObject();
+        resp.addProperty("type", "group_create_result");
+        if (error == null) {
+            resp.addProperty("success", true);
+        } else {
+            resp.addProperty("success", false);
+            resp.addProperty("error", error);
+        }
+        conn.send(resp.toString());
     }
 
     public void broadcast(String message) {
