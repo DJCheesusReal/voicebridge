@@ -53,7 +53,7 @@ public class BridgeWebSocketServer extends WebSocketServer {
         }
         byte[] data = new byte[buffer.remaining()];
         buffer.get(data);
-        VoicePlugin.feedAudio(playerUuid, data, false);
+        VoicePlugin.feedAudio(playerUuid, VoicePlugin.pcmToOpus(data), false);
     }
 
     @Override
@@ -106,7 +106,8 @@ public class BridgeWebSocketServer extends WebSocketServer {
                 }
             }
             VoicePlugin.setOutputForwarder(playerUuid, forwardedAudio -> {
-                conn.send(forwardedAudio.toBinary());
+                byte[] pcm = VoicePlugin.opusToPcm(forwardedAudio.opusData());
+                conn.send(pcm);
             });
         } catch (Exception e) {
             conn.close(4000, "Invalid message format");

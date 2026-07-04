@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -33,6 +34,12 @@ public class VoicePlugin implements VoicechatPlugin {
     private static final Map<UUID, Consumer<ForwardedAudio>> outputForwarders = new ConcurrentHashMap<>();
 
     public static final double PROXIMITY_DISTANCE = 48.0;
+
+    // Bridge codecs: shared encoder/decoder for PCM↔Opus conversion
+    // between raw browser audio and the SVC Opus pipeline.
+    private static OpusEncoder bridgeEncoder;
+    private static OpusDecoder bridgeDecoder;
+    private static final Object CODEC_LOCK = new Object();
 
     public static VoicechatServerApi getApi() {
         return voicechatApi;
@@ -209,6 +216,52 @@ public class VoicePlugin implements VoicechatPlugin {
     public static void removeOutputForwarder(UUID listenerUuid) {
         outputForwarders.remove(listenerUuid);
         LOGGER.info("Removed output forwarder for {}", listenerUuid);
+    }
+
+    // ===================== PCM↔Opus Bridge Codecs =====================
+
+    private static void ensureBridgeCodecs() {
+        if (bridgeEncoder != null) return;
+        synchronized (CODEC_LOCK) {
+            if (bridgeEncoder == null && voicechatApi != null) {
+                bridgeEncoder = voicechatApi.createEncoder();
+                bridgeDecoder = voicechatApi.createDecoder();
+                LOGGER.info("Bridge codecs initialized");
+            }
+        }
+    }
+
+    public static byte[] pcmToOpus(byte[] pcmData) {
+        if (pcmData == null || pcmData.length < 2 || (pcmData.length & 1) != 0) {
+            LOGGER.warn("pcmToOpus: invalid PCM data (len={})", pcmData == null ? 0 : pcmData.length);
+            return pcmData;
+        }
+        ensureBridgeCodecs();
+        synchronized (CODEC_LOCK) {
+            if (bridgeEncoder == null) {
+                LOGGER.warn("pcmToOpus: encoder not available");
+                return pcmData;
+            }
+            short[] samples = new short[pcmData.length / 2];
+            ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples);
+            return bridgeEncoder.encode(samples);
+        }
+    }
+
+    public static byte[] opusToPcm(byte[] opusData) {
+        if (opusData == null || opusData.length == 0) return opusData;
+        ensureBridgeCodecs();
+        synchronized (CODEC_LOCK) {
+            if (bridgeDecoder == null) {
+                LOGGER.warn("opusToPcm: decoder not available");
+                return opusData;
+            }
+            short[] samples = bridgeDecoder.decode(opusData);
+            if (samples == null || samples.length == 0) return opusData;
+            ByteBuffer buf = ByteBuffer.allocate(samples.length * 2).order(ByteOrder.LITTLE_ENDIAN);
+            buf.asShortBuffer().put(samples);
+            return buf.array();
+        }
     }
 
     public record ForwardedAudio(UUID senderUuid, byte[] opusData, boolean whispering) {
