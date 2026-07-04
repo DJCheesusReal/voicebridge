@@ -30,8 +30,13 @@ public class VoiceBridge implements DedicatedServerModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("voicebridge");
     private static final int WS_PORT = 8080;
     private static final String WEB_URL = "https://vc.djcheesus.com/?token=";
+    private static net.minecraft.server.MinecraftServer mcServer;
 
     private BridgeWebSocketServer wsServer;
+
+    public static net.minecraft.server.MinecraftServer getServer() {
+        return mcServer;
+    }
     private final ConcurrentMap<String, UUID> tokenRegistry = new ConcurrentHashMap<>();
     private final Random random = new Random();
     private int tickCounter = 0;
@@ -50,6 +55,11 @@ public class VoiceBridge implements DedicatedServerModInitializer {
                     .executes(this::executeWebCommand)
                 )
             );
+        });
+
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            mcServer = server;
+            LOGGER.info("VoiceBridge server reference captured");
         });
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {

@@ -9,7 +9,7 @@
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; height: 100vh; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
-#auth-screen, #app-screen { width: 100%; max-width: 480px; padding: 32px; }
+#auth-screen, #app-screen { width: 100%; max-width: 520px; padding: 32px; }
 .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; }
 h1 { font-size: 24px; margin-bottom: 4px; }
 h2 { font-size: 16px; font-weight: 400; color: #8b949e; margin-bottom: 24px; }
@@ -28,9 +28,23 @@ button.danger:hover { background: #f85149; }
 .url-bar { display: flex; gap: 8px; margin-bottom: 16px; }
 .url-bar input { flex: 1; font-size: 13px; }
 
-#toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+#toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 #toolbar h2 { margin: 0; font-size: 18px; font-weight: 600; color: #c9d1d9; }
+#sub-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .badge { background: #1f6feb; color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+.badge.green { background: #238636; }
+.badge.red { background: #da3633; }
+
+#ptt-btn { display: block; width: 100%; padding: 18px; border: none; border-radius: 8px; font-size: 18px; font-weight: 700; cursor: pointer; transition: all .1s; margin: 8px 0 12px 0; }
+#ptt-btn.idle { background: #21262d; color: #8b949e; border: 2px solid #30363d; }
+#ptt-btn.idle:hover { background: #30363d; }
+#ptt-btn.active { background: #238636; color: #fff; border: 2px solid #2ea043; }
+#ptt-btn.speaking { background: #da3633; color: #fff; border: 2px solid #f85149; }
+#ptt-hint { font-size: 12px; color: #484f58; text-align: center; margin-bottom: 8px; }
+
+#volume-meter { height: 4px; background: #21262d; border-radius: 2px; margin-bottom: 12px; overflow: hidden; }
+#volume-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #238636, #2ea043); transition: width .05s; border-radius: 2px; }
+#volume-fill.active { background: linear-gradient(90deg, #da3633, #f85149); }
 
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; padding: 8px; border-bottom: 1px solid #30363d; }
@@ -40,6 +54,12 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
 .uuid-col { color: #8b949e; font-size: 12px; }
 .pos-col { color: #58a6ff; }
 .coord { color: #c9d1d9; }
+.speaking-indicator { color: #3fb950; font-size: 12px; }
+
+#mic-permit { margin: 12px 0 0; padding: 14px; background: #1f2937; border: 1px dashed #30363d; border-radius: 8px; text-align: center; cursor: pointer; transition: background .2s; }
+#mic-permit:hover { background: #283541; }
+#mic-permit h3 { font-size: 14px; font-weight: 500; color: #c9d1d9; }
+#mic-permit p { font-size: 12px; color: #8b949e; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -49,7 +69,8 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
     <h1>VoiceBridge</h1>
     <h2>Connect to your Minecraft server</h2>
     <div class="url-bar">
-      <input type="text" id="ws-url" value="ws://localhost:8080" placeholder="ws://host:port">
+      <label style="display:none" for="ws-url">Server URL</label>
+      <input type="text" id="ws-url" value="ws://localhost:3000" placeholder="ws://host:port">
     </div>
     <label for="token-input">Authentication Token</label>
     <input type="text" id="token-input" class="token-input" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="0000" autocomplete="off">
@@ -61,10 +82,26 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
 <div id="app-screen" class="hidden">
   <div class="card">
     <div id="toolbar">
-      <h2>Players <span class="badge" id="player-count">0</span></h2>
-      <button id="disconnect-btn" class="danger" style="width:auto;margin:0;padding:6px 14px;font-size:13px;">Disconnect</button>
+      <h2>VoiceBridge</h2>
+      <button id="disconnect-btn" class="danger" style="width:auto;margin:0;padding:6px 14px;font-size:13px;">Leave</button>
     </div>
     <div id="status-bar" class="status success">Connected</div>
+
+    <div id="mic-permit">
+      <h3>🎤 Enable Microphone</h3>
+      <p>Click to allow mic access for voice chat</p>
+    </div>
+
+    <div id="audio-controls" class="hidden">
+      <div id="volume-meter"><div id="volume-fill"></div></div>
+      <div id="ptt-hint">Press and hold <strong>Space</strong> or click to talk</div>
+      <button id="ptt-btn" class="idle">Hold to Talk</button>
+    </div>
+
+    <div id="sub-bar">
+      <span>Players <span class="badge" id="player-count">0</span></span>
+      <span>Speaking <span class="badge green" id="speaking-count">0</span></span>
+    </div>
     <table>
       <thead>
         <tr><th>Player</th><th>Position</th></tr>
@@ -87,10 +124,37 @@ const authStatus = document.getElementById('auth-status');
 const disconnectBtn = document.getElementById('disconnect-btn');
 const playersTbody = document.getElementById('players-tbody');
 const playerCount = document.getElementById('player-count');
+const speakingCount = document.getElementById('speaking-count');
 const statusBar = document.getElementById('status-bar');
+const pttBtn = document.getElementById('ptt-btn');
+const pttHint = document.getElementById('ptt-hint');
+const volumeFill = document.getElementById('volume-fill');
+const audioControls = document.getElementById('audio-controls');
+const micPermit = document.getElementById('mic-permit');
 
 let ws = null;
 let connected = false;
+let playerUuid = null;
+
+// Audio
+let audioCtx = null;
+let micStream = null;
+let scriptNode = null;
+let micEnabled = false;
+let pttActive = false;
+
+const SAMPLE_RATE = 48000;
+const CHUNK_DURATION_MS = 40;
+const CHUNK_SAMPLES = Math.floor(SAMPLE_RATE * CHUNK_DURATION_MS / 1000); // 1920
+
+// Playback ring buffer
+let playQueue = [];
+let isPlaying = false;
+let playSource = null;
+let playGain = null;
+
+// Speaking set: UUIDs of players currently speaking
+let speakingPlayers = new Set();
 
 if (urlToken) {
   tokenInput.value = urlToken;
@@ -122,11 +186,162 @@ function updatePlayerTable(data) {
     const tr = document.createElement('tr');
     tr.className = 'online';
     const shortUuid = p.uuid ? p.uuid.substring(0, 8) + '...' : '?';
-    tr.innerHTML = `<td class="uuid-col">${shortUuid}</td><td class="pos-col"><span class="coord">${p.x.toFixed(1)}</span>, <span class="coord">${p.y.toFixed(1)}</span>, <span class="coord">${p.z.toFixed(1)}</span></td>`;
+    const isSpeaking = p.speaking ? '🔊 ' : '';
+    tr.innerHTML = `<td class="uuid-col">${isSpeaking}${shortUuid}</td><td class="pos-col"><span class="coord">${p.x.toFixed(1)}</span>, <span class="coord">${p.y.toFixed(1)}</span>, <span class="coord">${p.z.toFixed(1)}</span></td>`;
     playersTbody.appendChild(tr);
+  }
+  speakingCount.textContent = speakingPlayers.size;
+}
+
+// ========== Audio Capture ==========
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+}
+
+async function enableMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    initAudio();
+    const source = audioCtx.createMediaStreamSource(micStream);
+
+    scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+    source.connect(scriptNode);
+    scriptNode.connect(audioCtx.destination);
+
+    scriptNode.onaudioprocess = (event) => {
+      if (!pttActive || ws == null || ws.readyState !== WebSocket.OPEN) return;
+
+      const input = event.inputBuffer.getChannelData(0);
+      // Convert float32 [-1,1] to int16 PCM
+      const pcm = new Int16Array(input.length);
+      let peak = 0;
+      for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        const abs = Math.abs(s);
+        if (abs > peak) peak = abs;
+      }
+
+      // Update volume meter
+      volumeFill.style.width = (peak * 100) + '%';
+
+      // Send PCM chunk as binary
+      ws.send(pcm.buffer);
+    };
+
+    micEnabled = true;
+    micPermit.classList.add('hidden');
+    audioControls.classList.remove('hidden');
+    statusBar.textContent = 'Mic enabled — push Space to talk';
+    statusBar.className = 'status success';
+  } catch (err) {
+    setStatus(authStatus, 'Mic access denied: ' + err.message, 'error');
   }
 }
 
+function disableMic() {
+  pttActive = false;
+  if (scriptNode) {
+    scriptNode.disconnect();
+    scriptNode = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  micEnabled = false;
+  audioControls.classList.add('hidden');
+  micPermit.classList.remove('hidden');
+  pttBtn.className = 'idle';
+  pttBtn.textContent = 'Hold to Talk';
+  volumeFill.style.width = '0%';
+}
+
+// ========== Playback ==========
+function initPlayback() {
+  if (playGain) return;
+  initAudio();
+  playGain = audioCtx.createGain();
+  playGain.gain.value = 0.8;
+  playGain.connect(audioCtx.destination);
+}
+
+function feedPCM(pcmBuffer) {
+  initPlayback();
+  playQueue.push(new Int16Array(pcmBuffer));
+  if (!isPlaying) processPlayQueue();
+}
+
+function processPlayQueue() {
+  if (playQueue.length === 0) {
+    isPlaying = false;
+    return;
+  }
+  isPlaying = true;
+  const pcm = playQueue.shift();
+  const float32 = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) {
+    float32[i] = pcm[i] / (pcm[i] < 0 ? 0x8000 : 0x7FFF);
+  }
+  const buffer = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
+  buffer.getChannelData(0).set(float32);
+
+  playSource = audioCtx.createBufferSource();
+  playSource.buffer = buffer;
+  playSource.connect(playGain);
+  playSource.onended = () => processPlayQueue();
+  playSource.start();
+}
+
+// ========== PTT Controls ==========
+function startTalking() {
+  if (!micEnabled || !ws || ws.readyState !== WebSocket.OPEN) return;
+  pttActive = true;
+  pttBtn.className = 'active';
+  pttBtn.textContent = '🔴 Talking...';
+  pttHint.textContent = 'Release to mute';
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function stopTalking() {
+  if (!pttActive) return;
+  pttActive = false;
+  pttBtn.className = 'idle';
+  pttBtn.textContent = 'Hold to Talk';
+  pttHint.innerHTML = 'Press and hold <strong>Space</strong> or click to talk';
+  volumeFill.style.width = '0%';
+}
+
+// Mouse PTT
+pttBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startTalking(); });
+pttBtn.addEventListener('mouseup', (e) => { e.preventDefault(); stopTalking(); });
+pttBtn.addEventListener('mouseleave', () => stopTalking());
+
+// Touch PTT
+pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
+
+// Keyboard PTT
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !e.repeat && connected) {
+    e.preventDefault();
+    startTalking();
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' && connected) {
+    e.preventDefault();
+    stopTalking();
+  }
+});
+
+// Mic permission
+micPermit.addEventListener('click', enableMic);
+
+// ========== WebSocket ==========
 function connect() {
   const url = wsUrlInput.value.trim();
   if (!url) { setStatus(authStatus, 'Enter a WebSocket URL', 'error'); return; }
@@ -144,21 +359,36 @@ function connect() {
     return;
   }
 
+  ws.binaryType = 'arraybuffer';
+
   ws.onopen = () => {
     setStatus(authStatus, 'Connected, authenticating...', '');
     ws.send(JSON.stringify({ type: 'auth', token: token }));
   };
 
   ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      feedPCM(event.data);
+      return;
+    }
     try {
       const msg = JSON.parse(event.data);
-      if (msg.type === 'auth_success') {
-        connected = true;
-        setStatus(authStatus, 'Authenticated!', 'success');
-        showApp();
-        setStatus(statusBar, 'Connected as ' + msg.uuid.substring(0, 8) + '...', 'success');
-      } else if (msg.type === 'positions') {
-        updatePlayerTable(msg);
+      switch (msg.type) {
+        case 'auth_success':
+          connected = true;
+          playerUuid = msg.uuid;
+          setStatus(authStatus, 'Authenticated!', 'success');
+          showApp();
+          setStatus(statusBar, 'Connected — press Space to talk', 'success');
+          break;
+        case 'positions':
+          updatePlayerTable(msg);
+          break;
+        case 'speaking':
+          handleSpeaking(msg);
+          break;
+        case 'pong':
+          break;
       }
     } catch (e) {
       console.warn('Unparseable message:', event.data);
@@ -166,16 +396,16 @@ function connect() {
   };
 
   ws.onclose = (event) => {
-    connectBtn.disabled = false;
-    if (!connected) {
-      setStatus(authStatus, 'Connection failed (code: ' + event.code + ')', 'error');
-    } else {
+    disableMic();
+    if (connected) {
       connected = false;
       setStatus(statusBar, 'Disconnected', 'error');
       showAuth();
-      setStatus(authStatus, 'Disconnected', 'error');
-      connectBtn.disabled = false;
+      setStatus(authStatus, 'Disconnected (code: ' + event.code + ')', 'error');
+    } else {
+      setStatus(authStatus, 'Connection failed (code: ' + event.code + ')', 'error');
     }
+    connectBtn.disabled = false;
     ws = null;
   };
 
@@ -187,15 +417,33 @@ function connect() {
   };
 }
 
+function handleSpeaking(msg) {
+  if (msg.speaking) {
+    speakingPlayers.add(msg.uuid);
+  } else {
+    speakingPlayers.delete(msg.uuid);
+  }
+  speakingCount.textContent = speakingPlayers.size;
+}
+
 function disconnect() {
+  disableMic();
   if (ws) {
     ws.close(1000, 'User disconnect');
     ws = null;
   }
   connected = false;
+  speakingPlayers.clear();
+  playQueue = [];
+  isPlaying = false;
   showAuth();
   setStatus(authStatus, 'Disconnected', '');
   connectBtn.disabled = false;
+  if (audioCtx) {
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+    playGain = null;
+  }
 }
 
 connectBtn.addEventListener('click', connect);
