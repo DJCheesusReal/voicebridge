@@ -1,0 +1,7 @@
+.gradle/
+build/
+*.log
+run_build.py
+*.iml
+.idea/
+*.class

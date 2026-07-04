@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceBridge</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; height: 100vh; display: flex; align-items: center; justify-content: center; }
+.hidden { display: none !important; }
+
+#auth-screen, #app-screen { width: 100%; max-width: 480px; padding: 32px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; }
+h1 { font-size: 24px; margin-bottom: 4px; }
+h2 { font-size: 16px; font-weight: 400; color: #8b949e; margin-bottom: 24px; }
+label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #8b949e; }
+input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 16px; outline: none; transition: border-color .2s; }
+input:focus { border-color: #58a6ff; }
+input.token-input { font-size: 32px; letter-spacing: 12px; text-align: center; font-weight: 700; }
+button { width: 100%; padding: 10px 16px; background: #238636; border: 1px solid #2ea043; border-radius: 6px; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .2s; margin-top: 16px; }
+button:hover { background: #2ea043; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.danger { background: #da3633; border-color: #f85149; }
+button.danger:hover { background: #f85149; }
+.status { margin-top: 12px; font-size: 13px; text-align: center; color: #8b949e; }
+.status.error { color: #f85149; }
+.status.success { color: #3fb950; }
+.url-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.url-bar input { flex: 1; font-size: 13px; }
+
+#toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+#toolbar h2 { margin: 0; font-size: 18px; font-weight: 600; color: #c9d1d9; }
+.badge { background: #1f6feb; color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; padding: 8px; border-bottom: 1px solid #30363d; }
+td { padding: 8px; border-bottom: 1px solid #21262d; font-size: 14px; font-family: 'SF Mono', 'Fira Code', monospace; }
+tr:hover td { background: #161b22; }
+tr.online td:first-child::before { content: ''; display: inline-block; width: 8px; height: 8px; background: #3fb950; border-radius: 50%; margin-right: 8px; }
+.uuid-col { color: #8b949e; font-size: 12px; }
+.pos-col { color: #58a6ff; }
+.coord { color: #c9d1d9; }
+</style>
+</head>
+<body>
+
+<div id="auth-screen">
+  <div class="card">
+    <h1>VoiceBridge</h1>
+    <h2>Connect to your Minecraft server</h2>
+    <div class="url-bar">
+      <input type="text" id="ws-url" value="ws://localhost:8080" placeholder="ws://host:port">
+    </div>
+    <label for="token-input">Authentication Token</label>
+    <input type="text" id="token-input" class="token-input" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="0000" autocomplete="off">
+    <button id="connect-btn">Connect</button>
+    <div id="auth-status" class="status"></div>
+  </div>
+</div>
+
+<div id="app-screen" class="hidden">
+  <div class="card">
+    <div id="toolbar">
+      <h2>Players <span class="badge" id="player-count">0</span></h2>
+      <button id="disconnect-btn" class="danger" style="width:auto;margin:0;padding:6px 14px;font-size:13px;">Disconnect</button>
+    </div>
+    <div id="status-bar" class="status success">Connected</div>
+    <table>
+      <thead>
+        <tr><th>Player</th><th>Position</th></tr>
+      </thead>
+      <tbody id="players-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const urlToken = params.get('token');
+
+const authScreen = document.getElementById('auth-screen');
+const appScreen = document.getElementById('app-screen');
+const wsUrlInput = document.getElementById('ws-url');
+const tokenInput = document.getElementById('token-input');
+const connectBtn = document.getElementById('connect-btn');
+const authStatus = document.getElementById('auth-status');
+const disconnectBtn = document.getElementById('disconnect-btn');
+const playersTbody = document.getElementById('players-tbody');
+const playerCount = document.getElementById('player-count');
+const statusBar = document.getElementById('status-bar');
+
+let ws = null;
+let connected = false;
+
+if (urlToken) {
+  tokenInput.value = urlToken;
+}
+
+function setStatus(el, msg, type) {
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' ' + type : '');
+}
+
+function showApp() {
+  authScreen.classList.add('hidden');
+  appScreen.classList.remove('hidden');
+}
+
+function showAuth() {
+  appScreen.classList.add('hidden');
+  authScreen.classList.remove('hidden');
+}
+
+function updatePlayerTable(data) {
+  playersTbody.innerHTML = '';
+  if (!data || !data.players) {
+    playerCount.textContent = '0';
+    return;
+  }
+  playerCount.textContent = data.players.length;
+  for (const p of data.players) {
+    const tr = document.createElement('tr');
+    tr.className = 'online';
+    const shortUuid = p.uuid ? p.uuid.substring(0, 8) + '...' : '?';
+    tr.innerHTML = `<td class="uuid-col">${shortUuid}</td><td class="pos-col"><span class="coord">${p.x.toFixed(1)}</span>, <span class="coord">${p.y.toFixed(1)}</span>, <span class="coord">${p.z.toFixed(1)}</span></td>`;
+    playersTbody.appendChild(tr);
+  }
+}
+
+function connect() {
+  const url = wsUrlInput.value.trim();
+  if (!url) { setStatus(authStatus, 'Enter a WebSocket URL', 'error'); return; }
+  const token = tokenInput.value.trim();
+  if (!token || token.length !== 4) { setStatus(authStatus, 'Enter a 4-digit token', 'error'); return; }
+
+  connectBtn.disabled = true;
+  setStatus(authStatus, 'Connecting...', '');
+
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    setStatus(authStatus, 'Invalid URL: ' + e.message, 'error');
+    connectBtn.disabled = false;
+    return;
+  }
+
+  ws.onopen = () => {
+    setStatus(authStatus, 'Connected, authenticating...', '');
+    ws.send(JSON.stringify({ type: 'auth', token: token }));
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'auth_success') {
+        connected = true;
+        setStatus(authStatus, 'Authenticated!', 'success');
+        showApp();
+        setStatus(statusBar, 'Connected as ' + msg.uuid.substring(0, 8) + '...', 'success');
+      } else if (msg.type === 'positions') {
+        updatePlayerTable(msg);
+      }
+    } catch (e) {
+      console.warn('Unparseable message:', event.data);
+    }
+  };
+
+  ws.onclose = (event) => {
+    connectBtn.disabled = false;
+    if (!connected) {
+      setStatus(authStatus, 'Connection failed (code: ' + event.code + ')', 'error');
+    } else {
+      connected = false;
+      setStatus(statusBar, 'Disconnected', 'error');
+      showAuth();
+      setStatus(authStatus, 'Disconnected', 'error');
+      connectBtn.disabled = false;
+    }
+    ws = null;
+  };
+
+  ws.onerror = () => {
+    if (!connected) {
+      setStatus(authStatus, 'Connection error', 'error');
+      connectBtn.disabled = false;
+    }
+  };
+}
+
+function disconnect() {
+  if (ws) {
+    ws.close(1000, 'User disconnect');
+    ws = null;
+  }
+  connected = false;
+  showAuth();
+  setStatus(authStatus, 'Disconnected', '');
+  connectBtn.disabled = false;
+}
+
+connectBtn.addEventListener('click', connect);
+disconnectBtn.addEventListener('click', disconnect);
+
+tokenInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(); });
+wsUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tokenInput.focus(); });
+
+tokenInput.addEventListener('input', () => {
+  tokenInput.value = tokenInput.value.replace(/\D/g, '').slice(0, 4);
+});
+
+if (urlToken) {
+  setTimeout(() => connect(), 300);
+}
+</script>
+</body>
+</html>
