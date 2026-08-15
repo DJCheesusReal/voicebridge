@@ -236,11 +236,14 @@ const SAMPLE_RATE = 48000;
 const VOX_HOLD_MS = 600;      // keep transmitting this long after speech stops
 let voxSilentStart = 0;       // timestamp when last silence began
 
-// Playback
-let playQueue = [];
-let isPlaying = false;
-let playSource = null;
+// Playback (continuous gapless ring buffer; avoids gaps from chaining per-packet buffers)
 let playGain = null;
+let playScriptNode = null;
+let playBuffer = null;
+let playBufferSize = 0;
+let playWrite = 0;
+let playRead = 0;
+let playBuffered = 0;
 
 let speakingPlayers = new Set();
 
@@ -399,33 +402,42 @@ function initPlayback() {
   playGain = audioCtx.createGain();
   playGain.gain.value = 0.8;
   playGain.connect(audioCtx.destination);
+
+  playBufferSize = SAMPLE_RATE; // 1 second of audio
+  playBuffer = new Float32Array(playBufferSize);
+  playWrite = 0;
+  playRead = 0;
+  playBuffered = 0;
+
+  playScriptNode = audioCtx.createScriptProcessor(4096, 0, 1);
+  playScriptNode.onaudioprocess = (event) => {
+    const out = event.outputBuffer.getChannelData(0);
+    for (let i = 0; i < out.length; i++) {
+      if (playBuffered > 0) {
+        out[i] = playBuffer[playRead];
+        playRead = (playRead + 1) % playBufferSize;
+        playBuffered--;
+      } else {
+        out[i] = 0;
+      }
+    }
+  };
+  playScriptNode.connect(playGain);
 }
 
 function feedPCM(pcmBuffer) {
   initPlayback();
-  playQueue.push(new Int16Array(pcmBuffer));
-  if (!isPlaying) processPlayQueue();
-}
-
-function processPlayQueue() {
-  if (playQueue.length === 0) {
-    isPlaying = false;
-    return;
-  }
-  isPlaying = true;
-  const pcm = playQueue.shift();
-  const float32 = new Float32Array(pcm.length);
+  const pcm = new Int16Array(pcmBuffer);
   for (let i = 0; i < pcm.length; i++) {
-    float32[i] = pcm[i] / (pcm[i] < 0 ? 0x8000 : 0x7FFF);
+    playBuffer[playWrite] = pcm[i] / (pcm[i] < 0 ? 0x8000 : 0x7FFF);
+    playWrite = (playWrite + 1) % playBufferSize;
+    if (playBuffered < playBufferSize) {
+      playBuffered++;
+    } else {
+      // Ring full: drop the oldest sample to stay real-time.
+      playRead = (playRead + 1) % playBufferSize;
+    }
   }
-  const buffer = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
-  buffer.getChannelData(0).set(float32);
-
-  playSource = audioCtx.createBufferSource();
-  playSource.buffer = buffer;
-  playSource.connect(playGain);
-  playSource.onended = () => processPlayQueue();
-  playSource.start();
 }
 
 // ========== Input Mode ==========
@@ -715,8 +727,9 @@ function disconnect() {
   }
   connected = false;
   speakingPlayers.clear();
-  playQueue = [];
-  isPlaying = false;
+  playBuffered = 0;
+  playRead = 0;
+  playWrite = 0;
   voxActive = false;
   pttActive = false;
   showAuth();
@@ -726,6 +739,7 @@ function disconnect() {
     audioCtx.close().catch(() => {});
     audioCtx = null;
     playGain = null;
+    playScriptNode = null;
   }
 }
 
