@@ -263,6 +263,12 @@ function showAuth() {
   authScreen.classList.remove('hidden');
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
 function updatePlayerTable(data) {
   playersTbody.innerHTML = '';
   if (!data || !data.players) {
@@ -273,9 +279,9 @@ function updatePlayerTable(data) {
   for (const p of data.players) {
     const tr = document.createElement('tr');
     tr.className = 'online';
-    const shortUuid = p.uuid ? p.uuid.substring(0, 8) + '...' : '?';
-    const isSpeaking = p.speaking ? '🔊 ' : '';
-    tr.innerHTML = `<td class="uuid-col">${isSpeaking}${shortUuid}</td><td class="pos-col"><span class="coord">${p.x.toFixed(1)}</span>, <span class="coord">${p.y.toFixed(1)}</span>, <span class="coord">${p.z.toFixed(1)}</span></td>`;
+    const label = (p.name && p.name !== '') ? p.name : (p.uuid ? p.uuid.substring(0, 8) + '...' : '?');
+    const isSpeaking = speakingPlayers.has(p.uuid) ? '&#128266; ' : '';
+    tr.innerHTML = `<td class="uuid-col">${isSpeaking}${escapeHtml(label)}</td><td class="pos-col"><span class="coord">${Number(p.x).toFixed(1)}</span>, <span class="coord">${Number(p.y).toFixed(1)}</span>, <span class="coord">${Number(p.z).toFixed(1)}</span></td>`;
     playersTbody.appendChild(tr);
   }
   speakingCount.textContent = speakingPlayers.size;
@@ -657,7 +663,7 @@ function updateGroupList(msg) {
   for (const g of msg.groups) {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #21262d;';
-    div.innerHTML = `<div><strong style="color:#c9d1d9;font-size:14px;">${g.name}</strong><span style="color:#8b949e;font-size:11px;margin-left:6px;">${g.type}</span></div>`;
+    div.innerHTML = `<div><strong style="color:#c9d1d9;font-size:14px;">${escapeHtml(g.name)}</strong><span style="color:#8b949e;font-size:11px;margin-left:6px;">${escapeHtml(g.type)}</span></div>`;
     const joinBtn = document.createElement('button');
     joinBtn.textContent = g.hasPassword ? 'Join (pw)' : 'Join';
     joinBtn.style.cssText = 'width:auto;margin:0;padding:4px 10px;font-size:12px;';
