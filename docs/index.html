@@ -302,7 +302,7 @@ async function enableMic() {
     initAudio();
     const source = audioCtx.createMediaStreamSource(micStream);
 
-    scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+    scriptNode = audioCtx.createScriptProcessor(1024, 1, 1);
     source.connect(scriptNode);
     scriptNode.connect(audioCtx.destination);
 
@@ -409,7 +409,7 @@ function initPlayback() {
   playRead = 0;
   playBuffered = 0;
 
-  playScriptNode = audioCtx.createScriptProcessor(4096, 0, 1);
+  playScriptNode = audioCtx.createScriptProcessor(1024, 0, 1);
   playScriptNode.onaudioprocess = (event) => {
     const out = event.outputBuffer.getChannelData(0);
     for (let i = 0; i < out.length; i++) {
