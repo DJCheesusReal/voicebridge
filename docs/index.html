@@ -128,6 +128,9 @@ tr.online td:first-child::before { content: ''; display: inline-block; width: 8p
       <div id="volume-meter"><div id="volume-fill"></div></div>
       <div id="ptt-hint">Press and hold <strong>Space</strong> or click to talk</div>
       <button id="ptt-btn" class="idle">Hold to Talk</button>
+      <label class="echo-toggle" title="Off: you won't hear your own voice back in the portal">
+        <input type="checkbox" id="echo-toggle" checked> Echo my voice
+      </label>
     </div>
 
     <div id="sub-bar">
@@ -474,6 +477,10 @@ modeVox.addEventListener('click', () => setInputMode('vox'));
 
 voxThreshold.addEventListener('input', () => {
   voxThresholdLabel.textContent = voxThreshold.value;
+});
+
+document.getElementById('echo-toggle').addEventListener('change', (e) => {
+  sendMsg({ type: 'echo', enabled: e.target.checked });
 });
 
 // ========== PTT Controls ==========
